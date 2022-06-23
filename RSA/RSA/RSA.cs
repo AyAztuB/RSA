@@ -17,9 +17,6 @@ namespace RSA
 
         public RSA(int rsaLength = 256, int nbRounds = 30) 
         {
-            this.commonKeyParameter = "";
-            this.pubKey = "";
-            this.privKey = "";
             this.rsaLength = rsaLength;
             this.KeyGenerator(nbRounds);
         }
@@ -143,7 +140,7 @@ namespace RSA
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("Successfully generate first prime number");
             BigInteger q = PrimeNumberGenerator(nbRounds);
-            Console.WriteLine("Successfully generate first prime number");
+            Console.WriteLine("Successfully generate second prime number");
             Console.ForegroundColor = ConsoleColor.White;
             return KeyGenerator(p, q);
         }
