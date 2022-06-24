@@ -16,6 +16,8 @@ namespace RSA
                 DisplayHelp(args[0][2..]);*/
             if (args.Length != 0 && args[0] == "--GenerateKeys")
                 GenerateKeysReadOption(args);
+            else
+                DisplayHelp();
         }
 
 
@@ -84,6 +86,7 @@ namespace RSA
         #endregion
 
         #region REPL
+        // TODO
         #endregion
 
         #region GenerateKeys
@@ -212,12 +215,12 @@ namespace RSA
                 DisplayHelp(help);
                 return;
             }
-            if (common != "" && common[^1] == '/')
+            if (common != "" && (common[^1] == '/' || common[^1] == '\\'))
                 common += "common";
             if (key != ""){
-                if (key[^1] == '/')
+                if (key[^1] == '/' || key[^1] == '\\')
                     key += "rsa";
-                else if(key.Split('/')[^1].Contains('.')){
+                else if(key.Split(new char[]{'/', '\\'})[^1].Contains('.')){
                     Console.ForegroundColor = ConsoleColor.Red;
                     System.Console.WriteLine("FAIL: THE GIVEN KEY FILE HAVE AN EXTENSION !");
                     Console.ForegroundColor = ConsoleColor.White;
@@ -226,10 +229,10 @@ namespace RSA
                 }
             }
             if (json != ""){
-                if (json[^1] == '/')
+                if (json[^1] == '/' || json[^1] == '\\')
                     json += "RSA.json";
                 else {
-                    string last = json.Split('/')[^1];
+                    string last = json.Split(new char[]{'/','\\'})[^1];
                     if (last.Length < 6 || last[^5..] != ".json"){
                         Console.ForegroundColor = ConsoleColor.Red;
                         System.Console.WriteLine("FAIL: THE GIVEN JSON FILE HAVE A BAD EXTENSION !");
@@ -295,19 +298,316 @@ namespace RSA
         #endregion
 
         #region Encrypt-Decrypt
+
+        private static void ReadOptionEncryptDecrypt(bool isEncrypt, string[] args){
+            string help = isEncrypt ? "Encrypt" : "Decrypt";
+            string json = "", common = "", key = "";
+            string message = "", file = "";
+            bool force = false;
+            string output = "";
+
+            for (int i = 1; i < args.Length; i++){
+                switch(args[i]){
+                    case "--j" :
+                        if (json != "" || common != "" || key != "" || i+1 >= args.Length || args[i+1].Length == 0){
+                            DisplayHelp(help);
+                            return;
+                        }
+                        i+=1;
+                        json = args[i];
+                        break;
+                    case "--k" :
+                    case "--c" :
+                        if (json != "" || (args[i] == "--c" && common != "") || (args[i] == "--k" && key != "") || i+1 >= args.Length || args[i+1].Length == 0){
+                            DisplayHelp(help);
+                            return;
+                        }
+                        i +=1;
+                        if (args[i-1] == "--c")
+                            common = args[i];
+                        else
+                            key = args[i];
+                        break;
+                    case "--x" :
+                        if (force){
+                            DisplayHelp(help);
+                            return;
+                        }
+                        force = true;
+                        break;
+                    case "--f" :
+                    case "--m" :
+                        if (message != "" || file != "" || i+1>= args.Length || args[i+1].Length == 0){
+                            DisplayHelp(help);
+                            return;
+                        }
+                        i+=1;
+                        if (args[i-1] == "--f")
+                            file = args[i];
+                        else
+                            message = args[i];
+                        break;
+                    case "--o" :
+                        if (output != "" || i+1 >= args.Length || args[i+1].Length == 0){
+                            DisplayHelp(help);
+                            return;
+                        }
+                        i+=1;
+                        output = args[i];
+                        break;
+                    default:
+                        DisplayHelp(help);
+                        return;
+                }
+            }
+            if ((common != "" && key == "") || (key != "" && common == "") || (json == "" && common == "") || (json != "" && common != "") || (message == "" && file == "")){
+                DisplayHelp(help);
+                return;
+            }
+            if (force && message != ""){
+                Console.ForegroundColor = ConsoleColor.Red;
+                System.Console.WriteLine("FAIL: INVALID -x ARGUMENT WITH -m !");
+                Console.ForegroundColor = ConsoleColor.White;
+                DisplayHelp(help);
+                return;
+            }
+            if (force && !isEncrypt && (file[^1] != '/' && file[^1] != '\\')){
+                Console.ForegroundColor = ConsoleColor.Red;
+                System.Console.WriteLine("FAIL: INVALID -x ARGUMENT WITH --Decrypt OPTION IF IT'S NOT A DIRECTORY !");
+                Console.ForegroundColor = ConsoleColor.White;
+                DisplayHelp(help);
+                return;
+            }
+            EncryptDecryptWithOption(isEncrypt, json == "" ? key : json, common, message == "" ? file : message, message == "", output, force);
+        }
+
+        private static void EncryptDecryptWithOption(bool isEncrypt, string key, string common, string message, bool isFile, string output, bool force){
+            string help = isEncrypt ? "Encrypt" : "Decrypt";
+            string COMMON = "", KEY = "";
+            string MESSAGE = isFile ? "" : message;
+            List<(string, string)> DIRECTORY = null;
+            
+            if (common == ""){
+                if (key[^1] == '/' || key[^1] == '\\')
+                    key += "RSA.json";
+                if (! IsPathCorrect(key)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: THE GIVEN JSON FILE CANNOT BE ACCESSED DU TO THE INCORRECT PATH");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(key));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+                (bool isOk, RSA rsa) = ReadRSAFile(key);
+                if (!isOk){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: THE GIVEN JSON FILE CANNOT BE ACCESSED DU TO THE INCORRECT PATH / FILE");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(key));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+                COMMON = rsa.commonKeyParameter;
+                KEY = isEncrypt ? rsa.pubKey : rsa.privKey;
+            }
+            else{
+                if (key[^1] == '/' || key[^1] == '\\')
+                    key += ("rsa" + (isEncrypt ? ".pub" : ""));
+                if (common[^1]=='/' || common[^1]=='\\')
+                    common += "common";
+                if (!IsPathCorrect(key)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: THE GIVEN KEY FILE CANNOT BE ACCESSED DU TO THE INCORRECT PATH");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(key));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+                if (!IsPathCorrect(common)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: THE GIVEN COMMON FILE CANNOT BE ACCESSED DU TO THE INCORRECT PATH");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(common));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+                if (!ReadFile(key, out KEY)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: THE GIVEN KEY FILE CANNOT BE ACCESSED DU TO THE INCORRECT PATH / FILE");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(key));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+                if (!ReadFile(common, out COMMON)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: THE GIVEN COMMON FILE CANNOT BE ACCESSED DU TO THE INCORRECT PATH / FILE");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(common));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+            }
+
+            if (output!= "" && ! IsPathCorrect(output)){
+                Console.ForegroundColor = ConsoleColor.Red;
+                System.Console.WriteLine("FAIL: THE GIVEN OUTPUT CANNOT BE ACCESSED DU TO THE INCORRECT PATH");
+                System.Console.WriteLine("complete path: " + GetCompletePath(output));
+                Console.ForegroundColor = ConsoleColor.White;
+                DisplayHelp(help);
+                return;
+            }
+
+            if (isFile && (message[^1] == '/' || message[^1] == '\\') && !force){
+                Console.ForegroundColor = ConsoleColor.Red;
+                System.Console.WriteLine($"FAIL: PLEASE ADD -x ARGUMENT TO {(isEncrypt ? "ENCRYPT" : "DECRYPT")} A DIRECTORY !");
+                Console.ForegroundColor = ConsoleColor.White;
+                DisplayHelp(help);
+                return;
+            }
+            else if (isFile && message[^1] != '/' && message[^1] != '\\'){
+                if (!IsPathCorrect(message)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: THE GIVEN MESSAGE FILE CANNOT BE ACCESSED DU TO THE INCORRECT PATH");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(message));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+                if (!ReadFile(message, out MESSAGE)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: THE GIVEN MESSAGE FILE CANNOT BE ACCESSED DU TO THE INCORRECT PATH");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(message));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+            }
+            else if (isFile){
+                if (!IsPathCorrect(message)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: THE GIVEN DIRECTORY CANNOT BE ACCESSED DU TO THE INCORRECT PATH");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(message));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+                DIRECTORY = ReadAllDirectory(message);
+            }
+
+            if (!force || (message[^1] != '\\' && message[^1] != '/' && RSA.FromBinary(MESSAGE) < RSA.FromBinary(COMMON))){
+                string RES = "";
+                if (isEncrypt){
+                    var res = RSA.EncryptMessage(MESSAGE, COMMON, KEY);
+                    if (!res.Item2){
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        System.Console.WriteLine("FAIL: THE MESSAGE IS TOO LONG FOR THE COMMON KEY !");
+                        Console.ForegroundColor = ConsoleColor.White;
+                        DisplayHelp(help);
+                        return;
+                    }
+                    RES = res.Item1;
+                }
+                else{
+                    RES = RSA.DecryptMessage(MESSAGE, COMMON, KEY);
+                }
+                Console.ForegroundColor = ConsoleColor.Green;
+                System.Console.WriteLine("Successfully " + (isEncrypt ? "encrypt" : "decrypt") + " the message" + (isFile ? " in the file" : ""));
+                Console.ForegroundColor = ConsoleColor.White;
+                if (output == ""){
+                    if (isFile){
+                        if (!WriteFile(message, RES, false)){
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            System.Console.WriteLine("FAIL: IMPOSSIBLE TO WRITE IN THE FILE !");
+                            System.Console.WriteLine("complete path: " + GetCompletePath(message));
+                            Console.ForegroundColor = ConsoleColor.White;
+                            DisplayHelp(help);
+                            return;
+                        }
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        System.Console.WriteLine("Successfully write message in the file");
+                        Console.ForegroundColor = ConsoleColor.White;
+                        return;
+                    }
+                    System.Console.WriteLine((isEncrypt ? "ENCRYPTED" : "DECRYPTED") + " MESSAGE :\n" + RES);
+                    return;
+                }
+                if (output[^1] == '/'|| output[^1] == '\\')
+                    output += (isFile ? message.Split(new char[] {'/','\\'})[^1] : "output.out");
+                if(! WriteFile(output, RES, true)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: IMPOSSIBLE TO WRITE IN THE OUTPUT FILE !");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(output));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+                Console.ForegroundColor = ConsoleColor.Green;
+                System.Console.WriteLine("Successfully write " + (isEncrypt ? "encrypted" : "decrypted") + " message in '" + GetCompletePath(output) + "'");
+                Console.ForegroundColor = ConsoleColor.White;
+                return;
+            }
+            if (message[^1] != '\\' && message[^1] != '/'){
+                EncrypLongFiles(MESSAGE, output, COMMON, KEY);
+                return;
+            }
+            // TODO ENCRYPT/DECRYPT DIRECTORY
+        }
+
+        private static void EncrypLongFiles(string message, string output, string common, string key){
+            string help = "Encrypt";
+            List<string> messages = new List<string>();
+            string m = "";
+            for (int i = 0; i < message.Length; i++){
+                if (m.Length >= common.Length -1){
+                    messages.Add(m);
+                    m = "";
+                }
+                m += message[i];
+            }
+            List<string> encrypted = new List<string>();
+            foreach(var s in messages){
+                (string r, bool ok) = RSA.EncryptMessage(s, common, key);
+                if (!ok){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: AN ERROR APPAIRS DURING THE ENCRYPTION !");
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+                encrypted.Add(r);
+            }
+            if (output == "")
+                output = "output/";
+            Directory.CreateDirectory(output);
+            for(int i = 0; i < encrypted.Count; i++){
+                if (!WriteFile(output + $"output({i+1}).out", encrypted[i], true)){
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    System.Console.WriteLine("FAIL: IMPOSSIBILITY TO WRITE IN THE OUTPUT DIRECTORY FILES");
+                    System.Console.WriteLine("complete path: " + GetCompletePath(output + $"output({i+1}.out)"));
+                    Console.ForegroundColor = ConsoleColor.White;
+                    DisplayHelp(help);
+                    return;
+                }
+            }
+            Console.ForegroundColor = ConsoleColor.Green;
+            System.Console.WriteLine("Successfully write all file part encrypted in the output directory");
+            Console.ForegroundColor = ConsoleColor.White;
+        }
+
         #endregion
 
         #endregion
 
 
         private static bool IsPathCorrect(string path){
-            if (path[^1] == '/')
+            if (path[^1] == '/' || path[^1] == '\\')
                 return Directory.Exists(path);
             return Directory.Exists(GetFileDir(path));
         }
 
         private static string GetFileDir(string path){
-            string[] split = path.Split('/');
+            string[] split = path.Split(new char[]{'/', '\\'});
             string fileDir = "";
             for (int i = 0; i < split.Length -1; i++){
                 fileDir += (split[i] + "/");
@@ -316,10 +616,10 @@ namespace RSA
         }
 
         private static string GetCompletePath(string path){
-            if (path[0] == '/')
+            if (path[0] == '/'|| path[0] == '\\')
                 return path;
-            string[] execDir = (new DirectoryInfo("./")).FullName.Split('/');
-            string[] pathSplit = path.Split('/');
+            string[] execDir = (new DirectoryInfo("./")).FullName[..^1].Split(new char[]{'/', '\\'});
+            string[] pathSplit = path.Split(new char[]{'/','\\'});
             List<string> resSplit = new List<string>();
             foreach(var str in execDir){
                 resSplit.Add(str);
@@ -331,7 +631,7 @@ namespace RSA
                     resSplit.Add(k);
             }
             string res = "";
-            foreach(var i in execDir){
+            foreach(var i in resSplit){
                 res += ("/" + i);
             }
             return res;
@@ -343,8 +643,16 @@ namespace RSA
         public static (bool, RSA) ReadRSAFile(string path = "RSA.json")
         {
             string rsaJson = "";
-            if (ReadFile(path, out rsaJson))
-                return (true, JsonSerializer.Deserialize<RSA>(rsaJson));
+            if (ReadFile(path, out rsaJson)){
+                RSA rsa;
+                try{
+                    rsa = JsonSerializer.Deserialize<RSA>(rsaJson);
+                }
+                catch(Exception){
+                    return (false, null);
+                }
+                return (true, rsa);
+            }
             return (false, null);
         }
 
@@ -385,6 +693,22 @@ namespace RSA
             sw.Write(message);
             sw.Close();
             return true;
+        }
+
+        public static List<(string, string)> ReadAllDirectory(string path){
+            List<(string,string)> res = new List<(string, string)>();
+            DirectoryInfo d = new DirectoryInfo(path);
+            foreach(var file in d.EnumerateFiles()){
+                StreamReader sr = new StreamReader(file.FullName);
+                res.Add((file.Name ,sr.ReadToEnd()));
+                sr.Close();
+            }
+            foreach(var dir in d.EnumerateDirectories()){
+                foreach(var s in ReadAllDirectory(dir.FullName)){
+                    res.Add((dir.Name + "/" + s.Item1, s.Item2));
+                }
+            }
+            return res;
         }
 
         #endregion
