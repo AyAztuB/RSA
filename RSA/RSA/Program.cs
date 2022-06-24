@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 
 namespace RSA
 {
@@ -9,13 +10,23 @@ namespace RSA
     {
         static void Main(string[] args)
         {
-            /*List<string> OPTION = new List<string>(){"--REPL", "--GenerateKeys", "--Encrypt", "--Decrypt"};
-            if (args.Length == 0 || !OPTION.Contains(args[0]))
-                DisplayHelp();
-            else
-                DisplayHelp(args[0][2..]);*/
-            if (args.Length != 0 && args[0] == "--GenerateKeys")
-                GenerateKeysReadOption(args);
+            if (args.Length != 0){
+                switch(args[0]){
+                    case "--REPL":
+                        DisplayHelp("REPL");
+                        break;
+                    case "--GenerateKeys":
+                        GenerateKeysReadOption(args);
+                        break;
+                    case "--Encrypt":
+                    case "--Decrypt":
+                        ReadOptionEncryptDecrypt(args[0] == "--Encrypt", args);
+                        break;
+                    default:
+                        DisplayHelp();
+                        break;
+                }
+            }
             else
                 DisplayHelp();
         }
@@ -551,7 +562,62 @@ namespace RSA
                 EncrypLongFiles(MESSAGE, output, COMMON, KEY);
                 return;
             }
-            // TODO ENCRYPT/DECRYPT DIRECTORY
+            EncrypDecryptDirectory(DIRECTORY, output, COMMON, KEY, isEncrypt);
+        }
+
+        private static void EncrypDecryptDirectory(List<(string, string)> messages, string output, string common, string key, bool isEncrypt){
+            Thread[] threads = new Thread[8];
+            if (output == "")
+                output = "output/";
+            for (int i = 0; i < messages.Count; i++){
+                int tmp2 = i;
+                int tmp = i % 8;
+                if (i >= 8 && tmp == 0){
+                    foreach (var t in threads){
+                        t.Join();
+                    }
+                }
+                if (isEncrypt){
+                    threads[tmp] = new Thread(() => EncrypLongFiles(messages[tmp2].Item2, output + messages[tmp2].Item1, common, key));
+                }
+                else{
+                    var (out1, out2) = getPath(messages[tmp2].Item1);
+                    threads[tmp] = new Thread(() => DecryptFile(messages[tmp2].Item2, output + out1, common, key, out2));
+                }
+            }
+            foreach(var t in threads){
+                if (t.IsAlive)
+                    t.Join();
+            }
+            Console.ForegroundColor = ConsoleColor.Green;
+            System.Console.WriteLine("Successfully " + (isEncrypt ? "encrypt" : "decrypt") + " all the directory");
+            Console.ForegroundColor = ConsoleColor.White;
+        }
+
+        private static (string, string) getPath(string filePath){
+            string[] res = filePath.Split(new char[] {'/','\\'});
+            string output = "";
+            for (int i = 0; i < res.Length -1; i++){
+                output += (res[i] + '/');
+            }
+            return (output, res[^1]);
+        }
+
+        private static void DecryptFile(string message, string output, string common, string key, string fileName){
+            string help = "Decrypt";
+            string Decrypt = RSA.DecryptMessage(message, common, key);
+            Directory.CreateDirectory(output);
+            if (!WriteFile(output + fileName, message, true)){
+                Console.ForegroundColor = ConsoleColor.Red;
+                System.Console.WriteLine("FAIL: IMPOSSIBLE TO WRITE DECRYPTED MESSAGE !");
+                System.Console.WriteLine("complete path: " + GetCompletePath(output + fileName));
+                Console.ForegroundColor = ConsoleColor.White;
+                DisplayHelp(help);
+                return;
+            }
+            Console.ForegroundColor = ConsoleColor.Green;
+            System.Console.WriteLine("Successfully write decrypted " + fileName + " in the output directory");
+            Console.ForegroundColor = ConsoleColor.White;
         }
 
         private static void EncrypLongFiles(string message, string output, string common, string key){
@@ -631,8 +697,11 @@ namespace RSA
                     resSplit.Add(k);
             }
             string res = "";
-            foreach(var i in resSplit){
-                res += ("/" + i);
+            for(int i = 0; i < resSplit.Count; i++){
+                if (i == 0)
+                    res += resSplit[0];
+                else
+                    res += ("/" + resSplit[i]);
             }
             return res;
         }
