@@ -559,6 +559,10 @@ namespace RSA
                 return;
             }
             if (message[^1] != '\\' && message[^1] != '/'){
+                if (output == "")
+                    output = "output/";
+                if (output[^1] != '/' && output[^1] != '\\')
+                    output += '/';
                 EncrypLongFiles(MESSAGE, output, COMMON, KEY);
                 return;
             }
@@ -569,6 +573,8 @@ namespace RSA
             Thread[] threads = new Thread[8];
             if (output == "")
                 output = "output/";
+            if (output[^1] != '/' && output[^1] != '\\')
+                output += '/';
             for (int i = 0; i < messages.Count; i++){
                 int tmp2 = i;
                 int tmp = i % 8;
@@ -579,11 +585,15 @@ namespace RSA
                 }
                 if (isEncrypt){
                     threads[tmp] = new Thread(() => EncrypLongFiles(messages[tmp2].Item2, output + messages[tmp2].Item1, common, key));
+                    //EncrypLongFiles(messages[i].Item2, output + messages[i].Item1, common, key);
                 }
                 else{
                     var (out1, out2) = getPath(messages[tmp2].Item1);
                     threads[tmp] = new Thread(() => DecryptFile(messages[tmp2].Item2, output + out1, common, key, out2));
+                    //var (out1, out2) = getPath(messages[i].Item1);
+                    //DecryptFile(messages[i].Item2, output + out1, common, key, out2);
                 }
+                threads[tmp].Start();
             }
             foreach(var t in threads){
                 if (t.IsAlive)
@@ -606,8 +616,9 @@ namespace RSA
         private static void DecryptFile(string message, string output, string common, string key, string fileName){
             string help = "Decrypt";
             string Decrypt = RSA.DecryptMessage(message, common, key);
-            Directory.CreateDirectory(output);
-            if (!WriteFile(output + fileName, message, true)){
+            if (!Directory.Exists(output))
+                Directory.CreateDirectory(output);
+            if (!WriteFile(output + fileName, Decrypt, true)){
                 Console.ForegroundColor = ConsoleColor.Red;
                 System.Console.WriteLine("FAIL: IMPOSSIBLE TO WRITE DECRYPTED MESSAGE !");
                 System.Console.WriteLine("complete path: " + GetCompletePath(output + fileName));
@@ -631,6 +642,8 @@ namespace RSA
                 }
                 m += message[i];
             }
+            if (m != "")
+                messages.Add(m);
             List<string> encrypted = new List<string>();
             foreach(var s in messages){
                 (string r, bool ok) = RSA.EncryptMessage(s, common, key);
@@ -645,12 +658,15 @@ namespace RSA
             }
             if (output == "")
                 output = "output/";
-            Directory.CreateDirectory(output);
+            if (output[^1] != '/' && output[^1] != '\\')
+                output += '/';
+            if (!Directory.Exists(output))
+                Directory.CreateDirectory(output);
             for(int i = 0; i < encrypted.Count; i++){
-                if (!WriteFile(output + $"output({i+1}).out", encrypted[i], true)){
+                if (!WriteFile(output + $"output({i+1})", encrypted[i], true)){
                     Console.ForegroundColor = ConsoleColor.Red;
                     System.Console.WriteLine("FAIL: IMPOSSIBILITY TO WRITE IN THE OUTPUT DIRECTORY FILES");
-                    System.Console.WriteLine("complete path: " + GetCompletePath(output + $"output({i+1}.out)"));
+                    System.Console.WriteLine("complete path: " + GetCompletePath(output + $"output({i+1})"));
                     Console.ForegroundColor = ConsoleColor.White;
                     DisplayHelp(help);
                     return;
@@ -717,7 +733,8 @@ namespace RSA
                 try{
                     rsa = JsonSerializer.Deserialize<RSA>(rsaJson);
                 }
-                catch(Exception){
+                catch(Exception e){
+                    System.Console.WriteLine(e.Message);
                     return (false, null);
                 }
                 return (true, rsa);
@@ -773,7 +790,8 @@ namespace RSA
                 sr.Close();
             }
             foreach(var dir in d.EnumerateDirectories()){
-                foreach(var s in ReadAllDirectory(dir.FullName)){
+                List<(string, string)> res222 = ReadAllDirectory(dir.FullName + '\\');
+                foreach(var s in res222){
                     res.Add((dir.Name + "/" + s.Item1, s.Item2));
                 }
             }

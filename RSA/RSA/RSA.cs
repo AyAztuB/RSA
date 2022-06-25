@@ -15,6 +15,10 @@ namespace RSA
         public string pubKey { get; set; }
         public string privKey { get; set; }
 
+
+        public RSA(){}
+
+        
         public RSA(int rsaLength = 256, int nbRounds = 30) 
         {
             this.rsaLength = rsaLength;
